@@ -16,15 +16,20 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
   const [demoSentences, setDemoSentences] = useState<string[]>([]);
   const [demoMode, setDemoMode] = useState(false);
   
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { isListening, transcript, startListening, stopListening, speak } = useSpeech();
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
-    scrollToBottom();
+    if (messages.length > 0) {
+      scrollToBottom();
+    }
   }, [messages, transcript]);
 
   // Sync speech transcript to input
@@ -142,7 +147,7 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
         </button>
       </div>
       
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         {messages.length === 0 && (
           <div className="empty-chat">
             <p className="tamil-text">வணக்கம்! Speak or type in English, and I'll help you improve.</p>

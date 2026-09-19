@@ -96,6 +96,9 @@ export const FingerprintChart: React.FC<Props> = ({ scores, previousScores }) =>
         }
       },
     },
+    layout: {
+      padding: 10,
+    },
     plugins: {
       legend: {
         display: false,

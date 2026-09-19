@@ -105,9 +105,13 @@ def tag_errors_llm(raw_text: str, corrected_text: str) -> List[Dict[str, Any]]:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return []
-    genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    model = genai.GenerativeModel(model_name)
+    models_to_try = [
+        os.getenv("GEMINI_MODEL", "gemini-flash-latest"),
+        "gemini-3.6-flash",
+        "gemini-flash-latest"
+    ]
+    seen = set()
+    unique_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
     
     prompt = f'''
 You are a grammar classification assistant. Given an original English sentence with errors and its corrected version, classify the error(s) into one or more of these 6 categories:
@@ -124,8 +128,18 @@ Original: "{raw_text}"
 Corrected: "{corrected_text}"
 '''
     try:
-        response = model.generate_content(prompt)
-        text = response.text
+        response_text = None
+        for m in unique_models:
+            try:
+                model = genai.GenerativeModel(m)
+                response = model.generate_content(prompt)
+                response_text = response.text
+                break
+            except Exception:
+                continue
+        if not response_text:
+            return []
+        text = response_text
         # Strip markdown json block if present
         if text.startswith("```json"):
             text = text[7:]

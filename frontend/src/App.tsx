@@ -35,8 +35,15 @@ function App() {
   useEffect(() => {
     const savedId = localStorage.getItem('tamilbridge_session_id');
     const savedName = localStorage.getItem('tamilbridge_session_name');
-    if (savedId && savedName) {
-      setSession({ id: savedId, name: savedName, session_count: 1 });
+    if (savedName) {
+      setSession({ id: savedId || Date.now().toString(), name: savedName, session_count: 1 });
+      createSession(savedName)
+        .then(newSession => {
+          setSession(newSession);
+          localStorage.setItem('tamilbridge_session_id', newSession.id);
+          localStorage.setItem('tamilbridge_session_name', newSession.name);
+        })
+        .catch(err => console.warn('Could not sync session', err));
     }
   }, []);
 

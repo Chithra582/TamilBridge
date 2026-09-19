@@ -35,7 +35,10 @@ def create_session(request: CreateSessionRequest, session: Session = Depends(get
 def process_utterance(request: UtteranceRequest, session: Session = Depends(get_session)):
     learner = session.get(Learner, request.learner_id)
     if not learner:
-        raise HTTPException(status_code=404, detail="Learner not found")
+        learner = Learner(id=request.learner_id, name="Learner")
+        session.add(learner)
+        session.commit()
+        session.refresh(learner)
         
     # Get current fingerprint
     current_fingerprint = get_fingerprint_for_learner(learner.id, session)

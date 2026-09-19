@@ -17,12 +17,30 @@ Your rules:
 5. Never mention you are an AI. Stay in character as TamilBridge.
 6. Structure your response as JSON with fields: corrected_text (str), tamil_response (str), practice_sentences (list of 3 str, only if practice_mode=true, else empty list)."""
 
-def get_gemini_client() -> genai.GenerativeModel:
+def generate_gemini_content(prompt_parts: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if api_key:
         genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    return genai.GenerativeModel(model_name)
+    
+    models_to_try = [
+        os.getenv("GEMINI_MODEL", "gemini-flash-latest"),
+        "gemini-3.6-flash",
+        "gemini-flash-latest",
+        "gemini-1.5-flash"
+    ]
+    seen = set()
+    unique_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
+    
+    last_err = None
+    for m in unique_models:
+        try:
+            model = genai.GenerativeModel(m)
+            resp = model.generate_content(prompt_parts)
+            return resp.text
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or Exception("All Gemini models failed")
 
 def get_ai_response(raw_text: str, fingerprint: Dict[str, float], utterance_count: int, practice_mode: bool) -> Dict[str, Any]:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -33,8 +51,6 @@ def get_ai_response(raw_text: str, fingerprint: Dict[str, float], utterance_coun
             "practice_sentences": []
         }
         
-    model = get_gemini_client()
-    
     user_msg = f"""Learner's Input: "{raw_text}"
 Learner's Error Fingerprint: {json.dumps(fingerprint)}
 Practice Mode Active: {str(practice_mode).lower()}
@@ -43,8 +59,7 @@ Analyze the input and provide the JSON response based on the system rules. If pr
 """
     
     try:
-        response = model.generate_content([SYSTEM_PROMPT, user_msg])
-        text = response.text
+        text = generate_gemini_content([SYSTEM_PROMPT, user_msg])
         if text.startswith("```json"):
             text = text[7:]
         if text.endswith("```"):

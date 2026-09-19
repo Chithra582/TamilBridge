@@ -106,8 +106,10 @@ def tag_errors_llm(raw_text: str, corrected_text: str) -> List[Dict[str, Any]]:
     if not api_key:
         return []
     models_to_try = [
-        os.getenv("GEMINI_MODEL", "gemini-flash-latest"),
-        "gemini-3.6-flash",
+        os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
         "gemini-flash-latest"
     ]
     seen = set()
@@ -133,19 +135,21 @@ Corrected: "{corrected_text}"
             try:
                 model = genai.GenerativeModel(m)
                 response = model.generate_content(prompt)
-                response_text = response.text
-                break
+                if response and response.text:
+                    response_text = response.text
+                    break
             except Exception:
                 continue
         if not response_text:
             return []
-        text = response_text
-        # Strip markdown json block if present
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.endswith("```"):
-            text = text[:-3]
-        data = json.loads(text.strip())
+        text = response_text.strip()
+        json_start = text.find("[")
+        json_end = text.rfind("]")
+        if json_start != -1 and json_end != -1:
+            clean_json = text[json_start:json_end+1]
+        else:
+            clean_json = text
+        data = json.loads(clean_json)
         return data
     except Exception as e:
         print(f"[Gemini Error in tag_errors_llm]: {e}")

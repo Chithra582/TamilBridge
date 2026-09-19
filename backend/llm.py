@@ -23,10 +23,11 @@ def generate_gemini_content(prompt_parts: list) -> str:
         genai.configure(api_key=api_key)
     
     models_to_try = [
-        os.getenv("GEMINI_MODEL", "gemini-flash-latest"),
-        "gemini-3.6-flash",
-        "gemini-flash-latest",
-        "gemini-1.5-flash"
+        os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest"
     ]
     seen = set()
     unique_models = [m for m in models_to_try if not (m in seen or seen.add(m))]
@@ -36,7 +37,8 @@ def generate_gemini_content(prompt_parts: list) -> str:
         try:
             model = genai.GenerativeModel(m)
             resp = model.generate_content(prompt_parts)
-            return resp.text
+            if resp and resp.text:
+                return resp.text
         except Exception as e:
             last_err = e
             continue
@@ -59,12 +61,15 @@ Analyze the input and provide the JSON response based on the system rules. If pr
 """
     
     try:
-        text = generate_gemini_content([SYSTEM_PROMPT, user_msg])
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.endswith("```"):
-            text = text[:-3]
-        data = json.loads(text.strip())
+        text = generate_gemini_content([SYSTEM_PROMPT, user_msg]).strip()
+        # Find JSON boundaries
+        json_start = text.find("{")
+        json_end = text.rfind("}")
+        if json_start != -1 and json_end != -1:
+            clean_json = text[json_start:json_end+1]
+        else:
+            clean_json = text
+        data = json.loads(clean_json)
         return {
             "corrected_text": data.get("corrected_text", raw_text),
             "tamil_response": data.get("tamil_response", ""),

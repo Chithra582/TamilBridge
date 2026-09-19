@@ -6,6 +6,7 @@ backend/*.pyc
 backend/*.pyo
 backend/.pytest_cache/
 backend/tamilbridge.db
+*.db
 backend/test_gemini.py
 
 # Environment secrets — NEVER commit

@@ -161,7 +161,19 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
                 <p className="msg-text">{msg.text}</p>
               ) : (
                 <div className="ai-content">
-                  {msg.tamilText && <p className="tamil-text ai-tamil">{msg.tamilText}</p>}
+                  {msg.tamilText && (
+                    <div className="ai-tamil-row">
+                      <p className="tamil-text ai-tamil">{msg.tamilText}</p>
+                      <button 
+                        type="button" 
+                        className="speak-btn" 
+                        onClick={() => speak(msg.tamilText!)}
+                        title="Listen to voice"
+                      >
+                        🔊
+                      </button>
+                    </div>
+                  )}
                   
                   {msg.correctedText && msg.correctedText !== msg.text && (
                     <div className="correction-box">

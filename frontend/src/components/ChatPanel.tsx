@@ -18,7 +18,8 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
   
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { isListening, transcript, startListening, stopListening, speak } = useSpeech();
+  const demoCancelledRef = useRef(false);
+  const { isListening, transcript, startListening, stopListening, speak, stopSpeaking, isSpeaking } = useSpeech();
 
   const scrollToBottom = () => {
     if (messagesContainerRef.current) {
@@ -41,6 +42,9 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
 
   const handleSend = async (text: string) => {
     if (!text.trim()) return;
+
+    // Silence any ongoing speech when user sends a new message
+    stopSpeaking();
 
     const userMsgId = Date.now().toString();
     setMessages(prev => [...prev, {
@@ -70,14 +74,16 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
         timestamp: new Date()
       }]);
 
-      if (res.tamil_response) {
+      if (res.tamil_response && !demoCancelledRef.current) {
         speak(res.tamil_response);
       }
 
-      if (res.practice_mode && res.practice_sentences && res.practice_sentences.length > 0) {
+      if (res.practice_mode && res.practice_sentences && res.practice_sentences.length > 0 && !demoCancelledRef.current) {
         // slight delay to let user read message before interrupting
         setTimeout(() => {
-          onPracticeMode(res.practice_sentences, res.top_root_cause);
+          if (!demoCancelledRef.current) {
+            onPracticeMode(res.practice_sentences, res.top_root_cause);
+          }
         }, 1500);
       }
     } catch (error) {
@@ -85,7 +91,7 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'ai',
-        text: 'Sorry, I encountered an error. Please try again.',
+        text: 'மன்னிக்கவும், ஒரு பிழை ஏற்பட்டது. தயவுசெய்து மீண்டும் முயற்சிக்கவும்.',
         timestamp: new Date()
       }]);
     } finally {
@@ -99,6 +105,7 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
   };
 
   const toggleMic = () => {
+    stopSpeaking();
     if (isListening) {
       const finalTranscript = stopListening();
       if (finalTranscript || inputValue) {
@@ -110,8 +117,16 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
     }
   };
 
+  const stopDemo = () => {
+    demoCancelledRef.current = true;
+    setDemoMode(false);
+    setDemoSentences([]);
+    stopSpeaking();
+  };
+
   const startDemo = async () => {
     try {
+      demoCancelledRef.current = false;
       setDemoMode(true);
       const sentences = await getDemoSentences();
       setDemoSentences(sentences);
@@ -119,13 +134,16 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
       // Auto run demo
       let i = 0;
       const runNext = async () => {
+        if (demoCancelledRef.current) return;
         if (i < sentences.length) {
           const sent = sentences[i];
           setInputValue(sent);
           await new Promise(r => setTimeout(r, 1000));
+          if (demoCancelledRef.current) return;
           await handleSend(sent);
+          if (demoCancelledRef.current) return;
           i++;
-          setTimeout(runNext, 2000);
+          setTimeout(runNext, 2500);
         } else {
           setDemoMode(false);
           setDemoSentences([]);
@@ -141,10 +159,30 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
   return (
     <div className="chat-panel">
       <div className="chat-header">
-        <h2>Conversation</h2>
-        <button className="demo-btn" onClick={startDemo} disabled={isLoading || demoMode}>
-          🎬 Demo Mode
-        </button>
+        <div className="chat-header-title">
+          <h2>Conversation</h2>
+          {isSpeaking && (
+            <button 
+              type="button" 
+              className="stop-voice-btn" 
+              onClick={stopSpeaking}
+              title="Stop speaking"
+            >
+              🔇 Stop Voice
+            </button>
+          )}
+        </div>
+        <div className="chat-header-actions">
+          {demoMode ? (
+            <button className="demo-btn stop-demo-btn" onClick={stopDemo}>
+              ⏹️ Stop Demo
+            </button>
+          ) : (
+            <button className="demo-btn" onClick={startDemo} disabled={isLoading}>
+              🎬 Demo Mode
+            </button>
+          )}
+        </div>
       </div>
       
       <div className="messages-container" ref={messagesContainerRef}>

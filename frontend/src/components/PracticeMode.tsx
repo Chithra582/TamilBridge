@@ -8,11 +8,13 @@ interface Props {
 }
 
 export const PracticeMode: React.FC<Props> = ({ sentences, topRootCause, onComplete }) => {
-  const { isListening, startListening, stopListening } = useSpeech();
+  const { isListening, startListening, stopListening, speak, stopSpeaking } = useSpeech();
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<Record<number, string>>({});
+  const [typedInputs, setTypedInputs] = useState<Record<number, string>>({});
 
   const handleMicClick = (index: number) => {
+    stopSpeaking();
     if (isListening && activeSentenceIndex === index) {
       const transcript = stopListening();
       setAttempts(prev => ({ ...prev, [index]: transcript || '(No audio detected)' }));
@@ -26,6 +28,19 @@ export const PracticeMode: React.FC<Props> = ({ sentences, topRootCause, onCompl
     }
   };
 
+  const handleTypeSubmit = (e: React.FormEvent, index: number) => {
+    e.preventDefault();
+    const text = typedInputs[index];
+    if (!text || !text.trim()) return;
+    setAttempts(prev => ({ ...prev, [index]: text.trim() }));
+  };
+
+  const handleDone = () => {
+    stopSpeaking();
+    if (isListening) stopListening();
+    onComplete();
+  };
+
   return (
     <div className="practice-overlay">
       <div className="practice-panel">
@@ -37,22 +52,48 @@ export const PracticeMode: React.FC<Props> = ({ sentences, topRootCause, onCompl
             <div key={idx} className="practice-item">
               <div className="practice-item-header">
                 <span className="practice-sentence">{sentence}</span>
-                <button 
-                  className={`mic-button ${isListening && activeSentenceIndex === idx ? 'recording' : ''}`}
-                  onClick={() => handleMicClick(idx)}
-                >
-                  {isListening && activeSentenceIndex === idx ? '🛑' : '🎤'}
-                </button>
+                <div className="practice-actions">
+                  <button
+                    type="button"
+                    className="speak-btn practice-speak-btn"
+                    onClick={() => speak(sentence, 'en-US')}
+                    title="Listen to pronunciation"
+                  >
+                    🔊
+                  </button>
+                  <button 
+                    type="button"
+                    className={`mic-button ${isListening && activeSentenceIndex === idx ? 'recording' : ''}`}
+                    onClick={() => handleMicClick(idx)}
+                    title={isListening && activeSentenceIndex === idx ? "Stop recording" : "Speak into mic"}
+                  >
+                    {isListening && activeSentenceIndex === idx ? '🛑' : '🎤'}
+                  </button>
+                </div>
               </div>
+
+              {/* Type Option for users whose mic is not working or unavailable */}
+              <form onSubmit={(e) => handleTypeSubmit(e, idx)} className="practice-type-form">
+                <input
+                  type="text"
+                  className="practice-type-input"
+                  placeholder="Or type the sentence here..."
+                  value={typedInputs[idx] || ''}
+                  onChange={(e) => setTypedInputs({ ...typedInputs, [idx]: e.target.value })}
+                />
+                <button type="submit" className="practice-check-btn">
+                  Check
+                </button>
+              </form>
+
               {attempts[idx] && (
                 <div className="practice-attempt">
-                  <span className="attempt-label">You said:</span>
+                  <span className="attempt-label">Your attempt:</span>
                   <span className="attempt-text">{attempts[idx]}</span>
-                  {/* Basic string matching for feedback, real app would use better NLP */}
                   {attempts[idx].toLowerCase().replace(/[^a-z0-9]/gi, '') === sentence.toLowerCase().replace(/[^a-z0-9]/gi, '') ? (
-                    <span className="feedback-icon success">✅ Perfect!</span>
+                    <span className="feedback-icon success">✅ Perfect! Very well done!</span>
                   ) : (
-                    <span className="feedback-icon try-again">Try closer to the text!</span>
+                    <span className="feedback-icon try-again">Try closer to the text! Check spelling/words above.</span>
                   )}
                 </div>
               )}
@@ -60,7 +101,7 @@ export const PracticeMode: React.FC<Props> = ({ sentences, topRootCause, onCompl
           ))}
         </div>
 
-        <button className="btn-primary complete-btn" onClick={onComplete}>
+        <button className="btn-primary complete-btn" onClick={handleDone}>
           Done Practicing
         </button>
       </div>

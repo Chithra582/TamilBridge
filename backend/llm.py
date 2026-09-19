@@ -21,7 +21,8 @@ def get_gemini_client() -> genai.GenerativeModel:
     api_key = os.getenv("GEMINI_API_KEY")
     if api_key:
         genai.configure(api_key=api_key)
-    return genai.GenerativeModel('gemini-3.6-flash')
+    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    return genai.GenerativeModel(model_name)
 
 def get_ai_response(raw_text: str, fingerprint: Dict[str, float], utterance_count: int, practice_mode: bool) -> Dict[str, Any]:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -55,6 +56,7 @@ Analyze the input and provide the JSON response based on the system rules. If pr
             "practice_sentences": data.get("practice_sentences", [])
         }
     except Exception as e:
+        print(f"[Gemini Error in get_ai_response]: {e}")
         return {
             "corrected_text": raw_text,
             "tamil_response": "Sorry, an error occurred processing your request.",

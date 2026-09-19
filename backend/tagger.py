@@ -106,7 +106,8 @@ def tag_errors_llm(raw_text: str, corrected_text: str) -> List[Dict[str, Any]]:
     if not api_key:
         return []
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3.6-flash')
+    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    model = genai.GenerativeModel(model_name)
     
     prompt = f'''
 You are a grammar classification assistant. Given an original English sentence with errors and its corrected version, classify the error(s) into one or more of these 6 categories:
@@ -133,6 +134,7 @@ Corrected: "{corrected_text}"
         data = json.loads(text.strip())
         return data
     except Exception as e:
+        print(f"[Gemini Error in tag_errors_llm]: {e}")
         return []
 
 def tag_errors(raw_text: str, corrected_text: str) -> List[Dict[str, Any]]:

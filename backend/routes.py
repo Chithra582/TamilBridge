@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlmodel import Session, select
 import json
+import re
+import urllib.request
+import urllib.parse
 from typing import List
 
 from database import get_session
@@ -137,3 +140,58 @@ def get_demo_sentences():
         "He gave me the pen but I not yet use it.",
         "My sister she work in hospital as nurse."
     ]
+
+@router.get("/tts")
+def tts_stream(text: str, lang: str = "ta"):
+    clean_text = re.sub(r'[*#_`~>]', '', text).strip()
+    if not clean_text:
+        return Response(content=b"", media_type="audio/mpeg")
+
+    # Split long text into natural phrases (<= 130 chars) so Google TTS doesn't reject
+    sentences = re.split(r'(?<=[.!?:\n])\s+', clean_text)
+    chunks = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        if len(s) <= 130:
+            chunks.append(s)
+        else:
+            words = s.split()
+            cur = []
+            cur_len = 0
+            for w in words:
+                if cur_len + len(w) + 1 > 130:
+                    if cur:
+                        chunks.append(" ".join(cur))
+                    cur = [w]
+                    cur_len = len(w)
+                else:
+                    cur.append(w)
+                    cur_len += len(w) + 1
+            if cur:
+                chunks.append(" ".join(cur))
+
+    combined = bytearray()
+    tl_param = "ta" if lang.lower().startswith("ta") else "en-IN"
+    for chunk in chunks:
+        if not chunk.strip():
+            continue
+        try:
+            url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={urllib.parse.quote(chunk)}&tl={tl_param}&client=tw-ob"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                combined.extend(resp.read())
+        except Exception as e:
+            print(f"[TTS Stream Error for chunk '{chunk}']: {e}")
+            continue
+
+    return Response(
+        content=bytes(combined),
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Accept-Ranges": "bytes"
+        }
+    )
+

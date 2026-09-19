@@ -37,3 +37,7 @@ export const getDemoSentences = async (): Promise<string[]> => {
   if (!res.ok) throw new Error('Failed to get demo sentences');
   return res.json();
 };
+
+export const getTTSAudioUrl = (text: string, lang = 'ta'): string => {
+  return `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`;
+};

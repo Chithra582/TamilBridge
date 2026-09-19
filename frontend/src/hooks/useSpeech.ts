@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getTTSAudioUrl } from '../api/client';
 
 // Extend window object to include speech recognition types
 declare global {
@@ -193,12 +194,46 @@ export const useSpeech = (lang = 'en-US') => {
     };
   }, [stopSpeaking]);
 
+  const fallbackBrowserSpeak = useCallback((cleanText: string, speechLang: string) => {
+    if (isCancelledRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    const femaleVoice = getFemaleVoice(speechLang);
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
+      utterance.lang = femaleVoice.lang;
+    } else {
+      utterance.lang = speechLang;
+    }
+
+    utterance.pitch = 1.15;
+    utterance.rate = 0.95;
+    activeUtterancesRef.current = [utterance];
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+    };
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (_) {
+      setIsSpeaking(false);
+    }
+  }, [getFemaleVoice]);
+
   const speak = useCallback((text: string, speechLang = 'ta-IN') => {
-    // 1. Immediately cancel any currently active speech
+    // 1. Immediately cancel any ongoing speech
     stopSpeaking();
     isCancelledRef.current = false;
 
-    // Clean text: strip emojis, markdown symbols, asterisks, brackets, and extra spaces
+    // Clean text: remove markdown symbols, emojis, brackets, asterisks
     const cleanText = text
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
       .replace(/[*#_`~>]/g, '')
@@ -208,110 +243,38 @@ export const useSpeech = (lang = 'en-US') => {
 
     if (!cleanText) return;
 
-    // Chunk into natural sentence phrases (up to ~140 chars each for optimal audio quality)
-    const rawSentences = cleanText.split(/(?<=[.!?:\n])\s+/);
-    const chunks: string[] = [];
-    for (const s of rawSentences) {
-      if (s.length <= 140) {
-        if (s.trim()) chunks.push(s.trim());
-      } else {
-        const parts = s.split(/(?<=[,;])\s+/);
-        let cur = '';
-        for (const p of parts) {
-          if ((cur + ' ' + p).length <= 140) {
-            cur = cur ? cur + ' ' + p : p;
-          } else {
-            if (cur.trim()) chunks.push(cur.trim());
-            cur = p;
-          }
-        }
-        if (cur.trim()) chunks.push(cur.trim());
-      }
-    }
-
-    if (chunks.length === 0) return;
-
     setIsSpeaking(true);
 
     const tlParam = speechLang.toLowerCase().startsWith('en') ? 'en-IN' : 'ta';
+    const audioUrl = getTTSAudioUrl(cleanText, tlParam);
+    const audio = new Audio(audioUrl);
+    currentAudioRef.current = audio;
 
-    const fallbackSpeakChunk = (chunk: string, onDone: () => void) => {
-      if (isCancelledRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) {
-        onDone();
+    audio.onplay = () => {
+      if (isCancelledRef.current) {
+        audio.pause();
         return;
       }
-
-      const utterance = new SpeechSynthesisUtterance(chunk);
-      const femaleVoice = getFemaleVoice(speechLang);
-      if (femaleVoice) {
-        utterance.voice = femaleVoice;
-        utterance.lang = femaleVoice.lang;
-      } else {
-        utterance.lang = speechLang;
-      }
-
-      utterance.pitch = 1.15;
-      utterance.rate = 0.95;
-      activeUtterancesRef.current = [utterance];
-
-      utterance.onend = () => {
-        if (!isCancelledRef.current) {
-          onDone();
-        }
-      };
-
-      utterance.onerror = (e) => {
-        if (e.error === 'canceled' || e.error === 'interrupted' || isCancelledRef.current) {
-          return;
-        }
-        onDone();
-      };
-
-      try {
-        window.speechSynthesis.speak(utterance);
-      } catch (_) {
-        onDone();
-      }
+      setIsSpeaking(true);
     };
 
-    const playChunk = (index: number) => {
-      if (isCancelledRef.current || index >= chunks.length) {
-        setIsSpeaking(false);
-        return;
-      }
-
-      const chunk = chunks[index];
-      const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${tlParam}&client=tw-ob`;
-      
-      const audio = new Audio(audioUrl);
-      currentAudioRef.current = audio;
-
-      const proceedToNext = () => {
-        if (isCancelledRef.current) return;
-        audioTimerRef.current = setTimeout(() => {
-          if (!isCancelledRef.current) {
-            playChunk(index + 1);
-          }
-        }, 120);
-      };
-
-      audio.onended = () => {
-        proceedToNext();
-      };
-
-      audio.onerror = () => {
-        if (isCancelledRef.current) return;
-        fallbackSpeakChunk(chunk, proceedToNext);
-      };
-
-      audio.play().catch(() => {
-        if (isCancelledRef.current) return;
-        fallbackSpeakChunk(chunk, proceedToNext);
-      });
+    audio.onended = () => {
+      setIsSpeaking(false);
+      currentAudioRef.current = null;
     };
 
-    playChunk(0);
-  }, [getFemaleVoice, stopSpeaking]);
+    audio.onerror = (e) => {
+      console.warn('Backend TTS error, falling back to browser speech synthesis', e);
+      if (isCancelledRef.current) return;
+      fallbackBrowserSpeak(cleanText, speechLang);
+    };
+
+    audio.play().catch(e => {
+      console.warn('Audio play error, falling back to browser speech synthesis', e);
+      if (isCancelledRef.current) return;
+      fallbackBrowserSpeak(cleanText, speechLang);
+    });
+  }, [fallbackBrowserSpeak, stopSpeaking]);
 
   return {
     isListening,

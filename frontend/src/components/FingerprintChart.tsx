@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Chart as ChartJS,
+  RadarController,
   RadialLinearScale,
   PointElement,
   LineElement,
@@ -12,6 +13,7 @@ import { Radar } from 'react-chartjs-2';
 import { FingerprintScores, CATEGORY_LABELS, CATEGORY_COLORS, ErrorCategory } from '../types';
 
 ChartJS.register(
+  RadarController,
   RadialLinearScale,
   PointElement,
   LineElement,

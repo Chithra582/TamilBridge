@@ -79,6 +79,6 @@ Analyze the input and provide the JSON response based on the system rules. If pr
         print(f"[Gemini Error in get_ai_response]: {e}")
         return {
             "corrected_text": raw_text,
-            "tamil_response": "Sorry, an error occurred processing your request.",
+            "tamil_response": f"Sorry, an error occurred: {str(e)}",
             "practice_sentences": []
         }

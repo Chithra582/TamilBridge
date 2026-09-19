@@ -28,6 +28,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health_check():
+    api_key = os.getenv("GEMINI_API_KEY", "")
+    key_hint = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "NOT_SET"
+    return {
+        "status": "ok",
+        "version": "v2.1-36e6963",
+        "gemini_key_set": bool(api_key),
+        "gemini_key_hint": key_hint
+    }
+
 app.include_router(router, prefix="/api")
 
 if __name__ == "__main__":

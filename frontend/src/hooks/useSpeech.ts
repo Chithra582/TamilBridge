@@ -99,6 +99,13 @@ export const useSpeech = (lang = 'en-US') => {
     return transcript;
   }, [transcript]);
 
+  // Audio & Cancellation references
+  const isCancelledRef = useRef(false);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioTimerRef = useRef<any>(null);
+  const keepAliveTimerRef = useRef<any>(null);
+  const activeUtterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
+
   const getFemaleVoice = useCallback((targetLang: string): SpeechSynthesisVoice | null => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
     const available = window.speechSynthesis.getVoices();
@@ -108,31 +115,37 @@ export const useSpeech = (lang = 'en-US') => {
     const femaleKeywords = [
       'female', 'woman', 'zira', 'heera', 'swara', 'veena', 'neerja', 'kavya',
       'sangeeta', 'pallavi', 'shruti', 'ananya', 'samantha', 'victoria',
-      'karen', 'moira', 'tessa', 'fiona', 'google தமிழ்', 'google'
+      'karen', 'moira', 'tessa', 'fiona', 'vani', 'google தமிழ்'
     ];
+    const maleKeywords = ['valluvar', 'david', 'mark', 'george', 'ravi', 'male', 'man'];
 
-    // Priority 1: Target language voice that is explicitly female or Google Tamil
-    const targetFemale = available.find(v =>
+    // Safe voices that are NOT male
+    const nonMale = available.filter(v => 
+      !maleKeywords.some(m => v.name.toLowerCase().includes(m))
+    );
+
+    // Priority 1: Target language female voice
+    const targetFemale = nonMale.find(v =>
       (v.lang.toLowerCase().startsWith(langPrefix) || v.name.toLowerCase().includes('tamil')) &&
       femaleKeywords.some(k => v.name.toLowerCase().includes(k))
     );
     if (targetFemale) return targetFemale;
 
-    // Priority 2: Any voice in the target language
-    const anyTarget = available.find(v =>
-      v.lang.toLowerCase().startsWith(langPrefix) || v.name.toLowerCase().includes('tamil')
-    );
-    if (anyTarget) return anyTarget;
-
-    // Priority 3: Indian English Female voice (fluent pronunciation for Indian context)
-    const indianFemale = available.find(v =>
+    // Priority 2: Indian English Female voice (fluent pronunciation)
+    const indianFemale = nonMale.find(v =>
       (v.lang.toLowerCase().startsWith('en-in') || v.lang.toLowerCase() === 'en_in') &&
       femaleKeywords.some(k => v.name.toLowerCase().includes(k))
     );
     if (indianFemale) return indianFemale;
 
-    // Priority 4: Any system female voice
-    const anyFemale = available.find(v =>
+    // Priority 3: Any non-male target language voice
+    const anyTargetNonMale = nonMale.find(v =>
+      v.lang.toLowerCase().startsWith(langPrefix) || v.name.toLowerCase().includes('tamil')
+    );
+    if (anyTargetNonMale) return anyTargetNonMale;
+
+    // Priority 4: Any female voice
+    const anyFemale = nonMale.find(v =>
       femaleKeywords.some(k => v.name.toLowerCase().includes(k))
     );
     if (anyFemale) return anyFemale;
@@ -140,19 +153,38 @@ export const useSpeech = (lang = 'en-US') => {
     return null;
   }, []);
 
-  const activeUtterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
-  const keepAliveTimerRef = useRef<any>(null);
-
   const stopSpeaking = useCallback(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      if (keepAliveTimerRef.current) {
-        clearInterval(keepAliveTimerRef.current);
-        keepAliveTimerRef.current = null;
-      }
-      activeUtterancesRef.current = [];
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+    isCancelledRef.current = true;
+
+    if (audioTimerRef.current) {
+      clearTimeout(audioTimerRef.current);
+      audioTimerRef.current = null;
     }
+
+    if (keepAliveTimerRef.current) {
+      clearInterval(keepAliveTimerRef.current);
+      keepAliveTimerRef.current = null;
+    }
+
+    // Instantly pause and drop any running HTML Audio element
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current.src = '';
+      } catch (_) {}
+      currentAudioRef.current = null;
+    }
+
+    // Cancel Web Speech API immediately
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (_) {}
+    }
+
+    activeUtterancesRef.current = [];
+    setIsSpeaking(false);
   }, []);
 
   useEffect(() => {
@@ -162,16 +194,11 @@ export const useSpeech = (lang = 'en-US') => {
   }, [stopSpeaking]);
 
   const speak = useCallback((text: string, speechLang = 'ta-IN') => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      console.warn('Text-to-Speech not supported in this browser.');
-      return;
-    }
-
-    // Cancel any ongoing speech and reset timers
+    // 1. Immediately cancel any currently active speech
     stopSpeaking();
+    isCancelledRef.current = false;
 
-    // Clean text for fluent natural speech:
-    // Strip emojis, markdown, asterisks, brackets, and quotes that cause stuttering
+    // Clean text: strip emojis, markdown symbols, asterisks, brackets, and extra spaces
     const cleanText = text
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
       .replace(/[*#_`~>]/g, '')
@@ -181,85 +208,109 @@ export const useSpeech = (lang = 'en-US') => {
 
     if (!cleanText) return;
 
-    // Split text into natural sentence chunks (by period, exclamation, question mark, or newline).
-    // In Chrome, long utterances (>15s or >200 chars) cause the browser TTS buffer to freeze/get stuck.
-    // Chunking ensures each sentence is spoken crisply without ever getting stuck.
-    const rawChunks = cleanText.split(/(?<=[.!?:\n])\s+/);
-    const chunks = rawChunks.map(c => c.trim()).filter(c => c.length > 0);
+    // Chunk into natural sentence phrases (up to ~140 chars each for optimal audio quality)
+    const rawSentences = cleanText.split(/(?<=[.!?:\n])\s+/);
+    const chunks: string[] = [];
+    for (const s of rawSentences) {
+      if (s.length <= 140) {
+        if (s.trim()) chunks.push(s.trim());
+      } else {
+        const parts = s.split(/(?<=[,;])\s+/);
+        let cur = '';
+        for (const p of parts) {
+          if ((cur + ' ' + p).length <= 140) {
+            cur = cur ? cur + ' ' + p : p;
+          } else {
+            if (cur.trim()) chunks.push(cur.trim());
+            cur = p;
+          }
+        }
+        if (cur.trim()) chunks.push(cur.trim());
+      }
+    }
 
     if (chunks.length === 0) return;
 
-    const femaleVoice = getFemaleVoice(speechLang);
-    let currentIndex = 0;
-
     setIsSpeaking(true);
 
-    // Keep-alive heartbeat: prevents Chrome from pausing speech synthesis midway through
-    if (keepAliveTimerRef.current) clearInterval(keepAliveTimerRef.current);
-    keepAliveTimerRef.current = setInterval(() => {
-      if (window.speechSynthesis.speaking) {
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      } else {
-        clearInterval(keepAliveTimerRef.current);
-        keepAliveTimerRef.current = null;
-      }
-    }, 10000);
+    const tlParam = speechLang.toLowerCase().startsWith('en') ? 'en-IN' : 'ta';
 
-    const speakChunk = (index: number) => {
-      if (index >= chunks.length) {
-        setIsSpeaking(false);
-        if (keepAliveTimerRef.current) {
-          clearInterval(keepAliveTimerRef.current);
-          keepAliveTimerRef.current = null;
+    const fallbackSpeakChunk = (chunk: string, onDone: () => void) => {
+      if (isCancelledRef.current || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+        onDone();
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(chunk);
+      const femaleVoice = getFemaleVoice(speechLang);
+      if (femaleVoice) {
+        utterance.voice = femaleVoice;
+        utterance.lang = femaleVoice.lang;
+      } else {
+        utterance.lang = speechLang;
+      }
+
+      utterance.pitch = 1.15;
+      utterance.rate = 0.95;
+      activeUtterancesRef.current = [utterance];
+
+      utterance.onend = () => {
+        if (!isCancelledRef.current) {
+          onDone();
         }
+      };
+
+      utterance.onerror = (e) => {
+        if (e.error === 'canceled' || e.error === 'interrupted' || isCancelledRef.current) {
+          return;
+        }
+        onDone();
+      };
+
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch (_) {
+        onDone();
+      }
+    };
+
+    const playChunk = (index: number) => {
+      if (isCancelledRef.current || index >= chunks.length) {
+        setIsSpeaking(false);
         return;
       }
 
       const chunk = chunks[index];
-      const utterance = new SpeechSynthesisUtterance(chunk);
-      utterance.lang = speechLang;
+      const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${tlParam}&client=tw-ob`;
+      
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
 
-      if (femaleVoice) {
-        utterance.voice = femaleVoice;
-        utterance.lang = femaleVoice.lang;
-      }
-
-      // Fluent female cadence:
-      // pitch: 1.12 (warm, encouraging female tone)
-      // rate: 0.93 (clear, articulate, fluent phrasing)
-      utterance.pitch = 1.12;
-      utterance.rate = 0.93;
-
-      // Keep strong reference in ref array so browser garbage collection doesn't stop speech
-      activeUtterancesRef.current = [utterance];
-
-      utterance.onend = () => {
-        currentIndex++;
-        // Small 120ms natural breathing pause between sentences
-        setTimeout(() => {
-          speakChunk(currentIndex);
+      const proceedToNext = () => {
+        if (isCancelledRef.current) return;
+        audioTimerRef.current = setTimeout(() => {
+          if (!isCancelledRef.current) {
+            playChunk(index + 1);
+          }
         }, 120);
       };
 
-      utterance.onerror = (e) => {
-        console.error('Speech synthesis chunk error', e);
-        currentIndex++;
-        if (currentIndex < chunks.length) {
-          speakChunk(currentIndex);
-        } else {
-          setIsSpeaking(false);
-          if (keepAliveTimerRef.current) {
-            clearInterval(keepAliveTimerRef.current);
-            keepAliveTimerRef.current = null;
-          }
-        }
+      audio.onended = () => {
+        proceedToNext();
       };
 
-      window.speechSynthesis.speak(utterance);
+      audio.onerror = () => {
+        if (isCancelledRef.current) return;
+        fallbackSpeakChunk(chunk, proceedToNext);
+      };
+
+      audio.play().catch(() => {
+        if (isCancelledRef.current) return;
+        fallbackSpeakChunk(chunk, proceedToNext);
+      });
     };
 
-    speakChunk(0);
+    playChunk(0);
   }, [getFemaleVoice, stopSpeaking]);
 
   return {

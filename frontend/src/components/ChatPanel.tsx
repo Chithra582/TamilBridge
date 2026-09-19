@@ -156,6 +156,15 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
     }
   };
 
+  const handleStopVoice = () => {
+    stopSpeaking();
+    if (demoMode) {
+      demoCancelledRef.current = true;
+      setDemoMode(false);
+      setDemoSentences([]);
+    }
+  };
+
   return (
     <div className="chat-panel">
       <div className="chat-header">
@@ -165,7 +174,7 @@ export const ChatPanel: React.FC<Props> = ({ session, onFingerprintUpdate, onPra
             <button 
               type="button" 
               className="stop-voice-btn" 
-              onClick={stopSpeaking}
+              onClick={handleStopVoice}
               title="Stop speaking"
             >
               🔇 Stop Voice

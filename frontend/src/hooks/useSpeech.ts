@@ -140,51 +140,127 @@ export const useSpeech = (lang = 'en-US') => {
     return null;
   }, []);
 
+  const activeUtterancesRef = useRef<SpeechSynthesisUtterance[]>([]);
+  const keepAliveTimerRef = useRef<any>(null);
+
+  const stopSpeaking = useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      if (keepAliveTimerRef.current) {
+        clearInterval(keepAliveTimerRef.current);
+        keepAliveTimerRef.current = null;
+      }
+      activeUtterancesRef.current = [];
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+    };
+  }, [stopSpeaking]);
+
   const speak = useCallback((text: string, speechLang = 'ta-IN') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       console.warn('Text-to-Speech not supported in this browser.');
       return;
     }
 
-    // Cancel any previous utterance to avoid overlapping speech
-    window.speechSynthesis.cancel();
+    // Cancel any ongoing speech and reset timers
+    stopSpeaking();
 
-    // Clean text for fluent, natural speech:
-    // Strip markdown formatting, symbols, double-quotes, and emojis that cause choppy pauses
+    // Clean text for fluent natural speech:
+    // Strip emojis, markdown, asterisks, brackets, and quotes that cause stuttering
     const cleanText = text
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
       .replace(/[*#_`~>]/g, '')
-      .replace(/"/g, '')
+      .replace(/["']/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanText) return;
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = speechLang;
+    // Split text into natural sentence chunks (by period, exclamation, question mark, or newline).
+    // In Chrome, long utterances (>15s or >200 chars) cause the browser TTS buffer to freeze/get stuck.
+    // Chunking ensures each sentence is spoken crisply without ever getting stuck.
+    const rawChunks = cleanText.split(/(?<=[.!?:\n])\s+/);
+    const chunks = rawChunks.map(c => c.trim()).filter(c => c.length > 0);
 
-    // Select the best available fluent female voice
+    if (chunks.length === 0) return;
+
     const femaleVoice = getFemaleVoice(speechLang);
-    if (femaleVoice) {
-      utterance.voice = femaleVoice;
-      utterance.lang = femaleVoice.lang;
-    }
+    let currentIndex = 0;
 
-    // Fluent & natural female cadence tuning:
-    // pitch 1.15 produces a clear, friendly, feminine tone (like an encouraging tutor)
-    // rate 0.95 gives a clear, unhurried, natural speaking pace
-    utterance.pitch = 1.15;
-    utterance.rate = 0.95;
+    setIsSpeaking(true);
 
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = (e) => {
-      console.error('Speech synthesis error', e);
-      setIsSpeaking(false);
+    // Keep-alive heartbeat: prevents Chrome from pausing speech synthesis midway through
+    if (keepAliveTimerRef.current) clearInterval(keepAliveTimerRef.current);
+    keepAliveTimerRef.current = setInterval(() => {
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      } else {
+        clearInterval(keepAliveTimerRef.current);
+        keepAliveTimerRef.current = null;
+      }
+    }, 10000);
+
+    const speakChunk = (index: number) => {
+      if (index >= chunks.length) {
+        setIsSpeaking(false);
+        if (keepAliveTimerRef.current) {
+          clearInterval(keepAliveTimerRef.current);
+          keepAliveTimerRef.current = null;
+        }
+        return;
+      }
+
+      const chunk = chunks[index];
+      const utterance = new SpeechSynthesisUtterance(chunk);
+      utterance.lang = speechLang;
+
+      if (femaleVoice) {
+        utterance.voice = femaleVoice;
+        utterance.lang = femaleVoice.lang;
+      }
+
+      // Fluent female cadence:
+      // pitch: 1.12 (warm, encouraging female tone)
+      // rate: 0.93 (clear, articulate, fluent phrasing)
+      utterance.pitch = 1.12;
+      utterance.rate = 0.93;
+
+      // Keep strong reference in ref array so browser garbage collection doesn't stop speech
+      activeUtterancesRef.current = [utterance];
+
+      utterance.onend = () => {
+        currentIndex++;
+        // Small 120ms natural breathing pause between sentences
+        setTimeout(() => {
+          speakChunk(currentIndex);
+        }, 120);
+      };
+
+      utterance.onerror = (e) => {
+        console.error('Speech synthesis chunk error', e);
+        currentIndex++;
+        if (currentIndex < chunks.length) {
+          speakChunk(currentIndex);
+        } else {
+          setIsSpeaking(false);
+          if (keepAliveTimerRef.current) {
+            clearInterval(keepAliveTimerRef.current);
+            keepAliveTimerRef.current = null;
+          }
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
     };
 
-    window.speechSynthesis.speak(utterance);
-  }, [getFemaleVoice]);
+    speakChunk(0);
+  }, [getFemaleVoice, stopSpeaking]);
 
   return {
     isListening,
@@ -192,6 +268,7 @@ export const useSpeech = (lang = 'en-US') => {
     startListening,
     stopListening,
     speak,
+    stopSpeaking,
     isSpeaking
   };
 };

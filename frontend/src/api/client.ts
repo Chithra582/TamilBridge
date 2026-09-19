@@ -1,8 +1,10 @@
 import { Session, UtteranceResponse, FingerprintScores } from '../types';
 
 // In dev: empty string → Vite proxy forwards /api to localhost:8000
-// In production (Render): set VITE_API_BASE_URL to your backend Render URL
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
+// In production (Render): uses VITE_API_BASE_URL if set, or defaults to backend Render URL
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? 'https://tamilbridge-backend.onrender.com' : '');
 
 export const createSession = async (name: string): Promise<Session> => {
   const res = await fetch(`${BASE_URL}/api/session`, {

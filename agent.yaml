@@ -1,0 +1,64 @@
+spec_version: "0.1.0"
+name: "tamilbridge-agent"
+version: "2.0.0"
+description: >
+  Autonomous contrastive linguistic interference and pedagogical AI agent for Tamil-speaking
+  English learners. Diagnoses root-cause L1-to-L2 grammar transfer patterns across 6 categories,
+  maintains dynamic error fingerprints, and delivers targeted bilingual lessons.
+author: "Chithra R"
+license: "MIT"
+
+model:
+  preferred: "gemini-2.0-flash"
+  fallback:
+    - "gpt-4o"
+    - "claude-3-5-sonnet"
+  constraints:
+    temperature: 0.2
+    max_tokens: 4096
+
+skills:
+  - contrastive-interference-tagger
+  - error-fingerprint-scorer
+  - bilingual-pedagogical-mentor
+  - root-cause-curriculum-planner
+
+tools:
+  - grammar-tagger
+  - fingerprint-calculator
+  - pedagogical-explainer
+  - curriculum-generator
+
+runtime:
+  max_turns: 10
+  temperature: 0.2
+  timeout: 120
+
+compliance:
+  risk_tier: standard
+  frameworks:
+    - ferpa
+    - gdpr
+  data_governance:
+    pii_handling: redact
+    data_classification: internal
+  recordkeeping:
+    audit_logging: true
+    log_format: structured_json
+  supervision:
+    human_in_the_loop: conditional
+    override_capability: true
+    kill_switch: true
+
+tags:
+  - education
+  - linguistics
+  - tamilbridge
+  - language-learning
+  - grammar-tagging
+  - contrastive-analysis
+  - gemini
+
+metadata:
+  domain: "education"
+  category: "Education"

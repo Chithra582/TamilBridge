@@ -1,5 +1,10 @@
 # TamilBridge 2.0 — Contrastive Interference Engine
 
+[![OpenGAP Spec 0.1.0](https://img.shields.io/badge/OpenGAP-0.1.0-blue.svg)](https://opengitagent.org)
+[![GitAgent Passport](https://img.shields.io/badge/GitAgent%20Passport-Ready-brightgreen.svg)](https://app.hidevs.xyz/passport/submit)
+[![Category](https://img.shields.io/badge/Category-Education-purple.svg)](https://app.hidevs.xyz/passport/submit)
+[![Compliance](https://img.shields.io/badge/Compliance-FERPA%20%7C%20GDPR-orange.svg)](EXPLAINABILITY.md)
+
 > **AI English teacher for Tamil speakers that diagnoses root-cause grammar patterns, not just surface mistakes.**
 
 ---
@@ -161,3 +166,14 @@ Every 5 utterances, if the top root-cause score exceeds 3.0, the AI pauses free 
 See **[DEMO_SCRIPT.md](./DEMO_SCRIPT.md)** for the pre-scripted 5-sentence demo sequence with expected fingerprint evolution, judge talking points, and Q&A prep.
 
 Use the **🎬 Demo Mode** button in the UI to auto-play all 5 sentences without depending on live microphone input.
+
+---
+
+## GitAgent Passport Qualification
+
+This repository is fully compliant with the **OpenGAP Spec 0.1.0** standard and qualified for the **HiDevs GitAgent Passport**:
+
+- **Checkpoint 1 (Validate):** Verified OpenGAP spec 0.1.0 compliance via [`agent.yaml`](agent.yaml), [`SOUL.md`](SOUL.md), [`skills/`](skills/), and [`tools/`](tools/).
+- **Checkpoint 2 (Explain):** Comprehensive 5-section transparency report in [`EXPLAINABILITY.md`](EXPLAINABILITY.md) detailing linguistic decision mechanics, error fingerprinting, FERPA/GDPR compliance, and known failure mode mitigations.
+- **Checkpoint 3 (Export):** Cross-framework export compatibility tested across OpenAI SDK, CrewAI, Claude Code, and Lyzr.
+- **Target Category:** **`Education`** (Contrastive Linguistics & Language Learning).

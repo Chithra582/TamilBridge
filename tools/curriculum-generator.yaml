@@ -1,0 +1,14 @@
+name: curriculum-generator
+description: Generate targeted contrastive practice drills for a specific linguistic category.
+input_schema:
+  type: object
+  properties:
+    target_category:
+      type: string
+      description: The category requiring remediation.
+    difficulty_level:
+      type: string
+      enum: [beginner, intermediate, advanced]
+      description: Learner proficiency tier.
+  required:
+    - target_category

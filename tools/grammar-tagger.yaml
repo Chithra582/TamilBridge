@@ -1,0 +1,13 @@
+name: grammar-tagger
+description: Tag sentence tokens for the 6 contrastive interference categories.
+input_schema:
+  type: object
+  properties:
+    sentence:
+      type: string
+      description: The English sentence spoken or typed by the learner.
+    learner_id:
+      type: string
+      description: Identifier for the active learner session.
+  required:
+    - sentence

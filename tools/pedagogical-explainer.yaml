@@ -1,0 +1,15 @@
+name: pedagogical-explainer
+description: Generate a concise contrastive explanation in Tamil for a specific error category.
+input_schema:
+  type: object
+  properties:
+    category:
+      type: string
+      enum: [article_absence, tense_gap, preposition_transfer, word_order_calque, pluralization_skip, pronoun_simplification]
+      description: Dominant error category to explain.
+    example_sentence:
+      type: string
+      description: Learner's sentence demonstrating the error.
+  required:
+    - category
+    - example_sentence
